@@ -23,12 +23,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $contract_accepted = isset($_POST['agreement']) ? true : false;
     
     if (empty($full_name)) {
-        $errors['fio'] = 'ФИО обязательно для заполнения';
-    } elseif (mb_strlen($full_name) > 150) {
-        $errors['fio'] = 'ФИО не может быть длиннее 150 символов';
-    } elseif (!preg_match('/^[а-яА-ЯёЁa-zA-Z\s\-]+$/u', $full_name)) {
-        $errors['fio'] = 'ФИО может содержать только буквы, пробелы и дефисы';
-    }
+    $errors['fio'] = 'ФИО обязательно для заполнения';
+} elseif (strlen($full_name) > 150) {
+    $errors['fio'] = 'ФИО не может быть длиннее 150 символов';
+} elseif (!preg_match('/^[а-яА-ЯёЁa-zA-Z\s\-]+$/u', $full_name)) {
+    $errors['fio'] = 'ФИО может содержать только буквы, пробелы и дефисы';
+}
     
     if (empty($phone)) {
         $errors['phone'] = 'Телефон обязателен для заполнения';

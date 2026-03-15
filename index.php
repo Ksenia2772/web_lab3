@@ -11,7 +11,11 @@ $db_name = 'u82194';
 $errors = [];
 $success_message = '';
 
+file_put_contents('lang_debug.log', "=== НОВАЯ СЕССИЯ " . date('Y-m-d H:i:s') . " ===\n");
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    file_put_contents('lang_debug.log', "POST данные: " . print_r($_POST, true) . "\n", FILE_APPEND);
     
     $full_name = isset($_POST['fio']) ? trim($_POST['fio']) : '';
     $phone = isset($_POST['phone']) ? trim($_POST['phone']) : '';
@@ -22,13 +26,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $biography = isset($_POST['bio']) ? trim($_POST['bio']) : '';
     $contract_accepted = isset($_POST['agreement']) ? true : false;
     
+    file_put_contents('lang_debug.log', "Выбранные языки: " . print_r($selected_languages, true) . "\n", FILE_APPEND);
+    
     if (empty($full_name)) {
-    $errors['fio'] = 'ФИО обязательно для заполнения';
-} elseif (strlen($full_name) > 150) {
-    $errors['fio'] = 'ФИО не может быть длиннее 150 символов';
-} elseif (!preg_match('/^[а-яА-ЯёЁa-zA-Z\s\-]+$/u', $full_name)) {
-    $errors['fio'] = 'ФИО может содержать только буквы, пробелы и дефисы';
-}
+        $errors['fio'] = 'ФИО обязательно для заполнения';
+    } elseif (strlen($full_name) > 150) {
+        $errors['fio'] = 'ФИО не может быть длиннее 150 символов';
+    } elseif (!preg_match('/^[а-яА-ЯёЁa-zA-Z\s\-]+$/u', $full_name)) {
+        $errors['fio'] = 'ФИО может содержать только буквы, пробелы и дефисы';
+    }
     
     if (empty($phone)) {
         $errors['phone'] = 'Телефон обязателен для заполнения';
@@ -82,18 +88,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             
             $application_id = $pdo->lastInsertId();
+            file_put_contents('lang_debug.log', "ID заявки: $application_id\n", FILE_APPEND);
             
-            $placeholders = str_repeat('?,', count($selected_languages) - 1) . '?';
-            $sql = "SELECT id, name FROM programming_languages WHERE name IN ($placeholders)";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($selected_languages);
-            $languages = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-            
-            $sql = "INSERT INTO application_languages (application_id, language_id) VALUES (?, ?)";
-            $stmt = $pdo->prepare($sql);
             foreach ($selected_languages as $lang_name) {
-                if (isset($languages[$lang_name])) {
-                    $stmt->execute([$application_id, $languages[$lang_name]]);
+                file_put_contents('lang_debug.log', "Ищем язык: '$lang_name'\n", FILE_APPEND);
+                
+                $stmt = $pdo->prepare("SELECT id FROM programming_languages WHERE name = ?");
+                $stmt->execute([$lang_name]);
+                $lang_id = $stmt->fetchColumn();
+                
+                file_put_contents('lang_debug.log', "Найден ID: " . ($lang_id ?: 'НЕ НАЙДЕН') . "\n", FILE_APPEND);
+                
+                if ($lang_id) {
+                    $stmt = $pdo->prepare("INSERT INTO application_languages (application_id, language_id) VALUES (?, ?)");
+                    $stmt->execute([$application_id, $lang_id]);
+                    file_put_contents('lang_debug.log', "✓ Вставлен язык ID $lang_id\n", FILE_APPEND);
                 }
             }
             
@@ -108,7 +117,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->rollBack();
             }
             $errors['database'] = 'Ошибка базы данных: ' . $e->getMessage();
+            file_put_contents('lang_debug.log', "ОШИБКА: " . $e->getMessage() . "\n", FILE_APPEND);
         }
+    } else {
+        file_put_contents('lang_debug.log', "Ошибки валидации: " . print_r($errors, true) . "\n", FILE_APPEND);
     }
 }
 ?>

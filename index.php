@@ -11,7 +11,11 @@ $db_name = 'u82194';
 $errors = [];
 $success_message = '';
 
+file_put_contents('lang_debug.log', "=== НОВАЯ СЕССИЯ " . date('Y-m-d H:i:s') . " ===\n");
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    file_put_contents('lang_debug.log', "POST данные: " . print_r($_POST, true) . "\n", FILE_APPEND);
     
     $full_name = isset($_POST['fio']) ? trim($_POST['fio']) : '';
     $phone = isset($_POST['phone']) ? trim($_POST['phone']) : '';
@@ -22,9 +26,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $biography = isset($_POST['bio']) ? trim($_POST['bio']) : '';
     $contract_accepted = isset($_POST['agreement']) ? true : false;
     
+    file_put_contents('lang_debug.log', "Выбранные языки: " . print_r($selected_languages, true) . "\n", FILE_APPEND);
+    
     if (empty($full_name)) {
         $errors['fio'] = 'ФИО обязательно для заполнения';
-    } elseif (mb_strlen($full_name) > 150) {
+    } elseif (strlen($full_name) > 150) {
         $errors['fio'] = 'ФИО не может быть длиннее 150 символов';
     } elseif (!preg_match('/^[а-яА-ЯёЁa-zA-Z\s\-]+$/u', $full_name)) {
         $errors['fio'] = 'ФИО может содержать только буквы, пробелы и дефисы';
@@ -61,62 +67,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors['agreement'] = 'Необходимо подтвердить ознакомление с контрактом';
     }
     
-   if (empty($errors)) {
-    try {
-        $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        
-        $pdo->beginTransaction();
-        
-        // Вставляем основную заявку
-        $sql = "INSERT INTO applications (full_name, phone, email, birth_date, gender, biography, contract_accepted) 
-                VALUES (:full_name, :phone, :email, :birth_date, :gender, :biography, :contract_accepted)";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            ':full_name' => $full_name,
-            ':phone' => $phone,
-            ':email' => $email,
-            ':birth_date' => $birth_date,
-            ':gender' => $gender,
-            ':biography' => $biography,
-            ':contract_accepted' => $contract_accepted ? 1 : 0
-        ]);
-        
-        $application_id = $pdo->lastInsertId();
-        file_put_contents('lang_debug.log', "Application ID: $application_id\n", FILE_APPEND);
-        
-        // Вставляем языки - УПРОЩЕННЫЙ ВАРИАНТ
-        file_put_contents('lang_debug.log', "Selected languages: " . print_r($selected_languages, true) . "\n", FILE_APPEND);
-        
-        foreach ($selected_languages as $lang_name) {
-            file_put_contents('lang_debug.log', "Looking for language: '$lang_name'\n", FILE_APPEND);
+    if (empty($errors)) {
+        try {
+            $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass);
+            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             
-            $stmt = $pdo->prepare("SELECT id FROM programming_languages WHERE name = ?");
-            $stmt->execute([$lang_name]);
-            $lang_id = $stmt->fetchColumn();
+            $pdo->beginTransaction();
             
-            file_put_contents('lang_debug.log', "Found ID: " . ($lang_id ?: 'NOT FOUND') . "\n", FILE_APPEND);
+            $sql = "INSERT INTO applications (full_name, phone, email, birth_date, gender, biography, contract_accepted) 
+                    VALUES (:full_name, :phone, :email, :birth_date, :gender, :biography, :contract_accepted)";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                ':full_name' => $full_name,
+                ':phone' => $phone,
+                ':email' => $email,
+                ':birth_date' => $birth_date,
+                ':gender' => $gender,
+                ':biography' => $biography,
+                ':contract_accepted' => $contract_accepted ? 1 : 0
+            ]);
             
-            if ($lang_id) {
-                $stmt = $pdo->prepare("INSERT INTO application_languages (application_id, language_id) VALUES (?, ?)");
-                $stmt->execute([$application_id, $lang_id]);
-                file_put_contents('lang_debug.log', "✓ Inserted language ID $lang_id\n", FILE_APPEND);
+            $application_id = $pdo->lastInsertId();
+            file_put_contents('lang_debug.log', "ID заявки: $application_id\n", FILE_APPEND);
+            
+            foreach ($selected_languages as $lang_name) {
+                file_put_contents('lang_debug.log', "Ищем язык: '$lang_name'\n", FILE_APPEND);
+                
+                $stmt = $pdo->prepare("SELECT id FROM programming_languages WHERE name = ?");
+                $stmt->execute([$lang_name]);
+                $lang_id = $stmt->fetchColumn();
+                
+                file_put_contents('lang_debug.log', "Найден ID: " . ($lang_id ?: 'НЕ НАЙДЕН') . "\n", FILE_APPEND);
+                
+                if ($lang_id) {
+                    $stmt = $pdo->prepare("INSERT INTO application_languages (application_id, language_id) VALUES (?, ?)");
+                    $stmt->execute([$application_id, $lang_id]);
+                    file_put_contents('lang_debug.log', "✓ Вставлен язык ID $lang_id\n", FILE_APPEND);
+                }
             }
+            
+            $pdo->commit();
+            
+            $success_message = 'Данные успешно сохранены!';
+            
+            $_POST = [];
+            
+        } catch (PDOException $e) {
+            if ($pdo) {
+                $pdo->rollBack();
+            }
+            $errors['database'] = 'Ошибка базы данных: ' . $e->getMessage();
+            file_put_contents('lang_debug.log', "ОШИБКА: " . $e->getMessage() . "\n", FILE_APPEND);
         }
-        
-        $pdo->commit();
-        
-        $success_message = 'Данные успешно сохранены!';
-        $_POST = [];
-        
-    } catch (PDOException $e) {
-        if ($pdo) {
-            $pdo->rollBack();
-        }
-        $errors['database'] = 'Ошибка базы данных: ' . $e->getMessage();
-        file_put_contents('lang_debug.log', "ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
+    } else {
+        file_put_contents('lang_debug.log', "Ошибки валидации: " . print_r($errors, true) . "\n", FILE_APPEND);
     }
-}
 }
 ?>
 <!DOCTYPE html>
